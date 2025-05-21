@@ -19,7 +19,7 @@ st.set_page_config(
 # Indlæs data
 @st.cache_data
 def load_data():
-    df = pd.read_csv('data/sufoi_observations_cleaned.csv')
+    df = pd.read_csv('data/sufoi_observations_with_coords.csv')
     # Konverter dato til datetime format hvis muligt
     try:
         df['date'] = pd.to_datetime(df['date'], format='%d-%m-%Y', errors='coerce')
@@ -27,19 +27,8 @@ def load_data():
         pass
     return df
 
-# Indlæs postnumre med koordinater
-@st.cache_data
-def load_postnr_data():
-    return pd.read_csv('data/danske_postnumre.csv')
-
-# Indlæs postnumre
-postnr_df = load_postnr_data()
-
 # Indlæs data
 df = load_data()
-
-# Udtræk postnumre fra lokation
-df['postnr'] = df['location'].str.extract(r'(\d{4})').astype('str')
 
 # Udtræk time fra start_time
 df['hour'] = df['start_time'].apply(lambda x: int(x.split(':')[0]) if isinstance(x, str) and ':' in x else None)
@@ -85,45 +74,84 @@ st.write(f"Antal observationer: {len(filtered_df)}")
 # Opret to kolonner for de første visualiseringer
 col1, col2 = st.columns(2)
 
-# Først definer postnr_counts
-postnr_counts = filtered_df.groupby('postnr').size().reset_index(name='antal')
-
-# Derefter brug den
-postnr_counts['postnr'] = postnr_counts['postnr'].astype(str)
-
-# Konverter postnr til string i begge dataframes
-postnr_counts['postnr'] = postnr_counts['postnr'].astype(str)
-postnr_df['postnr'] = postnr_df['postnr'].astype(str)
-
-# Nu kan du flette dem uden problemer
-map_data = pd.merge(postnr_counts, postnr_df, on='postnr', how='inner')
-
 # 1. KORT MED OBSERVATIONER
 with col1:
     st.subheader("Geografisk fordeling af observationer")
     
-    # Udtræk postnumre fra lokationskolonnen
-    filtered_df['postnr'] = filtered_df['location'].str.extract(r'(\d{4})').astype(str)
-
-    # Tæl antal observationer per postnummer
-    postnr_counts = filtered_df.groupby('postnr').size().reset_index(name='antal')
-
-    # Fjern rækker med manglende postnumre
-    postnr_counts = postnr_counts[postnr_counts['postnr'] != 'nan']
+    # Filtrer data til kun at inkludere rækker med gyldige koordinater
+    map_data = filtered_df.dropna(subset=['latitude', 'longitude'])
     
-    # Kombiner med postnumre med koordinater
-    map_data = pd.merge(postnr_counts, postnr_df, on='postnr', how='inner')
+    # Tilføj validering af koordinater hvis ikke allerede gjort
+    if 'valid_coords' not in map_data.columns:
+        # Danmarks omtrentlige grænser
+        map_data = map_data[
+            (map_data['latitude'] >= 54.5) & 
+            (map_data['latitude'] <= 58.0) & 
+            (map_data['longitude'] >= 8.0) & 
+            (map_data['longitude'] <= 13.0)
+        ]
+    else:
+        map_data = map_data[map_data['valid_coords'] == True]
     
     if not map_data.empty:
-        # Opret punkter til kortet
-        st.map(map_data[['latitude', 'longitude']])
+        # Tjek hvilke kolonner der er tilgængelige
+        available_columns = map_data.columns.tolist()
         
-        # Vis også en tabel med top 10 postnumre med flest observationer
-        st.subheader("Top 10 postnumre med flest observationer")
-        top_postnr = postnr_counts.sort_values('antal', ascending=False).head(10)
-        st.dataframe(top_postnr)
+        # Definer grupperings-kolonner baseret på hvad der er tilgængeligt
+        groupby_columns = ['latitude', 'longitude']  # Disse skal være der
+        
+        # Tilføj postnr og by hvis de findes
+        if 'postnr' in available_columns:
+            groupby_columns.append('postnr')
+        if 'by' in available_columns:
+            groupby_columns.append('by')
+        
+        # Aggreger data per lokation
+        city_counts = map_data.groupby(groupby_columns).size().reset_index(name='antal')
+        
+        # Opret Plotly-kort med variabel punktstørrelse
+        hover_data = ['antal']
+        if 'postnr' in city_counts.columns:
+            hover_data.append('postnr')
+        
+        hover_name = 'by' if 'by' in city_counts.columns else None
+        
+        # Brug en anden kortprovider og juster indstillingerne
+        fig = px.scatter_mapbox(
+            city_counts,
+            lat="latitude",
+            lon="longitude",
+            size="antal",  # Størrelse baseret på antal observationer
+            color="antal",  # Farve baseret på antal observationer
+            hover_name=hover_name,
+            hover_data=hover_data,
+            color_continuous_scale=px.colors.sequential.Plasma,  # Ændret farveskala
+            size_max=35,  # Øget maksimal punktstørrelse
+            mapbox_style="carto-positron",  # Ændret kortprovider
+            title="UFO-observationer fordelt geografisk"
+        )
+        
+        # Simplere update_layout for at undgå fejl
+        fig.update_layout(
+            margin={"r":0, "t":30, "l":0, "b":0},
+            mapbox_style="carto-positron",
+            mapbox=dict(
+                center=dict(lat=56.0, lon=9.5),
+                zoom=6.5
+            )
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Vis statistik om observationer på kortet
+        st.write(f"Viser {len(map_data)} observationer fra {len(city_counts)} lokationer på kortet.")
+        
+        # Vis også en tabel med top 10 lokationer med flest observationer
+        st.subheader("Top 10 lokationer med flest observationer")
+        top_locations = city_counts.sort_values('antal', ascending=False).head(10)
+        st.dataframe(top_locations)
     else:
-        st.info("Ikke nok postnumre med koordinater til at vise kortet.")
+        st.info("Ingen observationer med gyldige koordinater at vise på kortet.")
 
 # 2. OBSERVATIONER I FORHOLD TIL DØGNET
 with col2:
@@ -255,67 +283,43 @@ with col4:
     else:
         # Forsøg at udtrække måned fra dato-streng
         try:
-            filtered_df['month'] = filtered_df['date'].str.extract(r'-(\d{2})-').astype(float)
+            filtered_df['month'] = filtered_df['date'].str.extract(r'-(\d{2})-').astype(int)
         except:
             # Fallback hvis det ikke virker
             filtered_df['month'] = np.nan
     
     # Konverter år og måned til strenge for at undgå grupperingsproblemer
     filtered_df['year_str'] = filtered_df['year'].astype(str)
-    filtered_df['month_str'] = filtered_df['month'].astype(str)
-
-    # Tæl observationer per år og måned
-    year_month_counts = filtered_df.groupby(['year_str', 'month_str']).size().reset_index(name='count')
-
-    # Opret pivot-tabel manuelt
-    pivot_data = {}
-    for _, row in year_month_counts.iterrows():
-        year = row['year_str']
-        month = row['month_str']
-        count = row['count']
-        
-        if year not in pivot_data:
-            pivot_data[year] = {}
-        
-        pivot_data[year][month] = count
-
-    # Konverter til DataFrame
-    years = sorted(pivot_data.keys())
-    months = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
+    filtered_df['month_int'] = filtered_df['month'].astype(int, errors='ignore')
+    
+    # Simpel løsning - bare tæl observationer per år og måned
+    year_month_counts = filtered_df.dropna(subset=['year_str', 'month_int']).groupby(['year_str', 'month_int']).size().reset_index(name='count')
+    
+    # Omdøb kolonner
+    year_month_counts.columns = ['År', 'Måned', 'Antal']
+    
+    # Tilføj månedsnavne
     month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'Maj', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
-
-    # Opret tom DataFrame
-    heatmap_data = []
-    for year in years:
-        for i, month in enumerate(months):
-            count = pivot_data.get(year, {}).get(month, 0)
-            heatmap_data.append({
-                'År': year,
-                'Måned': month_names[i],
-                'Antal': count,
-                'Måned_nr': i  # For at sortere månederne korrekt
-            })
-
-    heatmap_df = pd.DataFrame(heatmap_data)
-
-    # Opret heatmap
+    year_month_counts['Månedsnavn'] = year_month_counts['Måned'].apply(lambda x: month_names[int(x)-1] if pd.notna(x) and 1 <= int(x) <= 12 else 'Ukendt')
+    
+    # Opret heatmap direkte fra denne DataFrame
     fig = px.density_heatmap(
-        heatmap_df,
-        x='Måned',
-        y='År',
+        year_month_counts, 
+        x='Månedsnavn', 
+        y='År', 
         z='Antal',
         color_continuous_scale='Viridis',
-        category_orders={"Måned": month_names},
+        category_orders={"Månedsnavn": month_names},
         labels={'Antal': 'Observationer'},
         title="UFO-observationer per måned og år"
     )
-
+    
+    # Opdater layout
     fig.update_layout(
         xaxis_title="Måned",
-        yaxis_title="År",
-        xaxis={'categoryarray': month_names}
+        yaxis_title="År"
     )
-
+    
     st.plotly_chart(fig, use_container_width=True)
 
 # 5. FARVEFORDELING
