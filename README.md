@@ -1,19 +1,29 @@
-# 🎈 Blank app template
+# SUFOI UFO Observationer
 
-A simple Streamlit app template for you to modify!
+En interaktiv Streamlit-applikation til at udforske UFO-observationer indrapporteret til SUFOI (Skandinavisk UFO Information) fra 1996 til 2024.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+## Om projektet
 
-### How to run it on your own machine
+Denne applikation visualiserer data fra SUFOI's database over UFO-observationer i Danmark og omegn. Dataene er indsamlet fra SUFOI's hjemmeside og renset for at sikre konsistens og brugbarhed.
 
-1. Install the requirements
+## Funktioner
 
-   ```
-   $ pip install -r requirements.txt
-   ```
+- Filtrering af observationer efter år, farve og land
+- Visualisering af observationer over tid (år og måned)
+- Analyse af de mest almindelige farver i observationerne
+- Komplet tabel med alle observationsdetaljer
+- Mulighed for at downloade filtrerede data
 
-2. Run the app
+## Datakilder
 
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+Data er indsamlet fra [SUFOI's hjemmeside](https://sufoi.dk/obs/) og renset for at sikre konsistens i formater og værdier.
+
+## Kør lokalt
+
+1. Klon dette repository
+2. Installer de nødvendige pakker: `pip install -r requirements.txt`
+3. Kør applikationen: `streamlit run app.py`
+
+## Deployment
+
+Denne app er deployed på Streamlit Cloud og kan tilgås på: [indsæt URL her efter deployment]
