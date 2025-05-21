@@ -102,11 +102,11 @@ with col1:
         postnr = row['postnr']
         if postnr in postnr_coords:
             lat, lon = postnr_coords[postnr]
-            # Gentag punktet baseret på antal observationer for at skabe "vægt"
-            for _ in range(row['antal']):
+            # Tilføj et punkt for hver observation
+            for _ in range(min(row['antal'], 10)):  # Begræns til 10 punkter per postnummer for at undgå overbelastning
                 map_data.append({
-                    'lat': lat,
-                    'lon': lon
+                    'latitude': lat + (np.random.random() - 0.5) * 0.01,  # Tilføj lidt tilfældighed for at undgå overlap
+                    'longitude': lon + (np.random.random() - 0.5) * 0.01
                 })
     
     if map_data:
@@ -115,12 +115,13 @@ with col1:
         # Brug Streamlit's indbyggede kortfunktion
         st.map(map_df)
         
-        # Vis også en tabel med top 10 postnumre
+        # Vis også en tabel med top 10 postnumre med flest observationer
         st.subheader("Top 10 postnumre med flest observationer")
         top_postnr = postnr_counts.sort_values('antal', ascending=False).head(10)
         st.dataframe(top_postnr)
     else:
         st.info("Ikke nok postnumre med koordinater til at vise kortet.")
+
 
 
 # 2. OBSERVATIONER I FORHOLD TIL DØGNET
