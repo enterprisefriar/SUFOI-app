@@ -27,6 +27,14 @@ def load_data():
         pass
     return df
 
+# Indlæs postnumre med koordinater
+@st.cache_data
+def load_postnr_data():
+    return pd.read_csv('data/danske_postnumre.csv')
+
+# Indlæs postnumre
+postnr_df = load_postnr_data()
+
 # Indlæs data
 df = load_data()
 
@@ -77,6 +85,19 @@ st.write(f"Antal observationer: {len(filtered_df)}")
 # Opret to kolonner for de første visualiseringer
 col1, col2 = st.columns(2)
 
+# Først definer postnr_counts
+postnr_counts = filtered_df.groupby('postnr').size().reset_index(name='antal')
+
+# Derefter brug den
+postnr_counts['postnr'] = postnr_counts['postnr'].astype(str)
+
+# Konverter postnr til string i begge dataframes
+postnr_counts['postnr'] = postnr_counts['postnr'].astype(str)
+postnr_df['postnr'] = postnr_df['postnr'].astype(str)
+
+# Nu kan du flette dem uden problemer
+map_data = pd.merge(postnr_counts, postnr_df, on='postnr', how='inner')
+
 # 1. KORT MED OBSERVATIONER
 with col1:
     st.subheader("Geografisk fordeling af observationer")
@@ -89,31 +110,13 @@ with col1:
 
     # Fjern rækker med manglende postnumre
     postnr_counts = postnr_counts[postnr_counts['postnr'] != 'nan']
-
-    # Opret et simpelt datasæt med danske postnumre og deres koordinater
-    postnr_coords = {
-        # Her indsættes din postnummer-koordinat mapping
-        # Forkortet for læsbarhed
-    }
-
-    # Opret en DataFrame til st.map
-    map_data = []
-    for _, row in postnr_counts.iterrows():
-        postnr = row['postnr']
-        if postnr in postnr_coords:
-            lat, lon = postnr_coords[postnr]
-            # Tilføj et punkt for hver observation
-            for _ in range(min(row['antal'], 10)):  # Begræns til 10 punkter per postnummer for at undgå overbelastning
-                map_data.append({
-                    'latitude': lat + (np.random.random() - 0.5) * 0.01,  # Tilføj lidt tilfældighed for at undgå overlap
-                    'longitude': lon + (np.random.random() - 0.5) * 0.01
-                })
     
-    if map_data:
-        map_df = pd.DataFrame(map_data)
-        
-        # Brug Streamlit's indbyggede kortfunktion
-        st.map(map_df)
+    # Kombiner med postnumre med koordinater
+    map_data = pd.merge(postnr_counts, postnr_df, on='postnr', how='inner')
+    
+    if not map_data.empty:
+        # Opret punkter til kortet
+        st.map(map_data[['latitude', 'longitude']])
         
         # Vis også en tabel med top 10 postnumre med flest observationer
         st.subheader("Top 10 postnumre med flest observationer")
@@ -121,8 +124,6 @@ with col1:
         st.dataframe(top_postnr)
     else:
         st.info("Ikke nok postnumre med koordinater til at vise kortet.")
-
-
 
 # 2. OBSERVATIONER I FORHOLD TIL DØGNET
 with col2:
